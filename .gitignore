@@ -1,0 +1,76 @@
+# --- IDE / editor / studio ---
+.cursor/
+.cursor-server/
+.idea/
+.vscode-server/
+.windsurf-server/
+.lightning_studio/
+.bash_history
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- ML models (keep download script + registry) ---
+pipeline_models/**/*
+!pipeline_models/
+!pipeline_models/.gitkeep
+!pipeline_models/__init__.py
+!pipeline_models/paths.py
+!pipeline_models/download_models.py
+
+# --- Hugging Face / DSPy cache ---
+.cache/
+.huggingface/
+.dspy_cache/
+.EasyOCR/
+.paddlex/
+.supermaven/
+
+# --- Pipeline outputs & experiments ---
+output/
+visual_results/
+visual_results_ner/
+visual_result_layoutlm/
+bbox_ablation/
+bbox_ablation_page/
+bbox_ablation_tessaract/
+ocr_notebook/
+
+# --- Sample / test images (large binaries) ---
+page_image/
+images/
+sample_rx_test.png
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tiff
+*.tif
+*.webp
+
+# --- Large KB data (keep Python scripts) ---
+Database/embeddings/
+Database/*.json
+Database/*.csv
+Database/*.xlsx
+
+# --- Notebooks ---
+*.ipynb
+.ipynb_checkpoints/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Local env files ---
+.env
+.env.*
+*.local

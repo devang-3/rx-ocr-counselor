@@ -4,8 +4,6 @@ End-to-end prescription OCR pipeline: extract medications from Rx images, match 
 
 **Stack:** DocTR → TrOCR → LayoutLMv3 NER (regex fallback) → BioBERT KB → optional DSPy (Qwen 2.5)
 
-See [`plan.md`](plan.md) for the original phase blueprint and [`problem.md`](problem.md) for known issues and fix history. Planned work lives in [`future.md`](future.md).
-
 ---
 
 ## What It Does
@@ -17,6 +15,61 @@ See [`plan.md`](plan.md) for the original phase blueprint and [`problem.md`](pro
 | Entity extraction | Regex NER / LayoutLMv3 | `drug_name`, dosage, frequency, duration |
 | Knowledge lookup | BioBERT + `Database/` | Canonical drug, safety facts, match score |
 | Patient Q&A (optional) | DSPy + local Qwen | Grounded counseling from DB facts only |
+
+## Pipeline Flow
+
+```mermaid
+flowchart TD
+    subgraph input["Input"]
+        IMG["Prescription image"]
+        CLI["CLI: run_prescription_pipeline.py"]
+        API["FastAPI / Web UI"]
+    end
+
+    subgraph ocr["OCR — prescription_pipeline/ocr/"]
+        DOCTR["DocTR — layout detection"]
+        TROCR["TrOCR — text recognition"]
+    end
+
+    subgraph ner["NER — prescription_pipeline/ner/"]
+        LM["LayoutLMv3 spatial NER"]
+        REGEX["Regex NER + brand aliases"]
+        ENT["ExtractedMedication<br/>drug_name · dosage · frequency · duration"]
+    end
+
+    subgraph kb["Knowledge Bus — Database/ + prescription_pipeline/knowledge/"]
+        BB["BioBERT query embedding"]
+        DB[("Drug KB + embeddings")]
+        MATCH["MatchedMedication<br/>canonical name · safety facts · score"]
+    end
+
+    subgraph optional["Optional"]
+        OVERLAY["BBox overlay PNG"]
+        TRIG["Action triggers<br/>frequency reminders"]
+        COUNSEL["DSPy + Qwen counselor<br/>grounded on DB facts only"]
+    end
+
+    OUT[("prescription_results.json")]
+
+    IMG --> CLI
+    IMG --> API
+    CLI --> DOCTR
+    API --> DOCTR
+    DOCTR -->|"bounding boxes"| TROCR
+    TROCR -->|"OCR strings + coords"| LM
+    LM -->|"weights missing"| REGEX
+    LM --> ENT
+    REGEX --> ENT
+    ENT --> BB
+    BB --> DB
+    DB --> MATCH
+    MATCH --> OVERLAY
+    MATCH --> TRIG
+    MATCH --> OUT
+    MATCH -->|"patient query + counselor ON"| COUNSEL
+    COUNSEL --> OUT
+    OVERLAY --> OUT
+```
 
 Target medication schema (Phase 1.1):
 
@@ -31,7 +84,7 @@ Target medication schema (Phase 1.1):
 
 ---
 
-## Phase Status (from `plan.md`)
+## Phase Status
 
 | Phase | Goal | Status |
 |-------|------|--------|
@@ -52,7 +105,7 @@ Target medication schema (Phase 1.1):
 pip install -r requirements.txt
 ```
 
-Pin compatible deps if you hit `numpy` / `sklearn` errors (see P-DEPLOY-001 in `problem.md`).
+Pin compatible deps if you hit `numpy` / `sklearn` errors (`numpy>=1.26.4,<2.4`, `scikit-learn>=1.5.2`).
 
 ### 2. Download models
 
@@ -109,8 +162,6 @@ Docker:
 docker compose up --build
 ```
 
-API details, Butterfly wiring, and curl examples: [`deployment/README.md`](deployment/README.md).
-
 ---
 
 ## Project Layout
@@ -122,9 +173,6 @@ Database/                # Drug KB, embeddings, drug_matcher
 pipeline_models/         # Local model weights + download script
 page_image/              # Sample prescriptions
 output/                  # JSON results + bbox overlays
-plan.md                  # Phase blueprint
-problem.md               # Problem registry (bugs + fixes)
-future.md                # Roadmap for next improvements
 ```
 
 ---
@@ -138,23 +186,10 @@ Regex NER is active until `pipeline_models/layoutlmv3-rx-ner/` is fine-tuned. Cu
 - Combo strengths (e.g. Augmentin 625) — may match as `ambiguous` in KB
 - CPU counseling is slow — use `qwen2.5-0.5b-instruct` or GPU
 
-Full issue list: [`problem.md`](problem.md).
-
 ---
 
-## Critical Rules (from `plan.md`)
+## Critical Rules
 
 - **Never trust OCR spelling alone** — always run BioBERT KB match on confirmed entities
 - **LLM only synthesizes DB facts** — counselor must not invent medical advice
 - **Recompile DSPy, don't hand-edit prompts** — add failed examples and run `prescription_pipeline.counseling.compile`
-
----
-
-## Docs
-
-| File | Purpose |
-|------|---------|
-| [`plan.md`](plan.md) | Original 8-week architecture blueprint |
-| [`problem.md`](problem.md) | Living bug registry with IDs and status |
-| [`future.md`](future.md) | Prioritized improvements and stretch goals |
-| [`deployment/README.md`](deployment/README.md) | API, Docker, Butterfly assembly |

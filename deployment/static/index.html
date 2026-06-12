@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prescription Pipeline</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, system-ui, sans-serif;
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --border: #e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    h1 { margin: 0 0 8px; font-size: 1.8rem; }
+    .sub { color: var(--muted); margin-bottom: 24px; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    label { display: block; font-weight: 600; margin-bottom: 8px; }
+    input[type="file"], textarea, button {
+      width: 100%;
+      font: inherit;
+    }
+    textarea {
+      min-height: 90px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      resize: vertical;
+    }
+    button {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 12px 0;
+    }
+    .toggle input { width: auto; }
+    .med-list { display: grid; gap: 12px; }
+    .med {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fafbff;
+    }
+    .med h3 { margin: 0 0 8px; font-size: 1rem; }
+    .med p { margin: 4px 0; color: var(--muted); font-size: 0.92rem; }
+    .chat-log {
+      min-height: 220px;
+      max-height: 360px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fafafa;
+    }
+    .msg { margin-bottom: 10px; }
+    .msg.user strong { color: #111827; }
+    .msg.bot strong { color: var(--accent); }
+    .status { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+    .overlay {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Prescription Pipeline</h1>
+    <p class="sub">Upload Rx, fetch drug facts from database, optionally chat with counselor LLM.</p>
+
+    <div class="grid">
+      <section class="card">
+        <label for="rx-file">Prescription image</label>
+        <input id="rx-file" type="file" accept="image/*" />
+        <button id="extract-btn">Extract medications</button>
+        <p id="extract-status" class="status">No file processed yet.</p>
+        <img id="overlay" class="overlay" alt="Detection overlay" />
+      </section>
+
+      <section class="card">
+        <h2 style="margin-top:0;">Extracted medications</h2>
+        <div id="med-list" class="med-list">
+          <p class="status">Upload an image and click Extract.</p>
+        </div>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:16px;">
+      <h2 style="margin-top:0;">Patient chat</h2>
+      <div class="toggle">
+        <input id="need-counselor" type="checkbox" />
+        <label for="need-counselor" style="margin:0;">Need Counselor (use LLM)</label>
+      </div>
+      <div id="chat-log" class="chat-log"></div>
+      <textarea id="chat-input" placeholder="Can I take this with food?"></textarea>
+      <button id="send-btn">Send</button>
+      <p id="chat-status" class="status"></p>
+    </section>
+  </main>
+
+  <script>
+    let currentPrescription = null;
+
+    const fileInput = document.getElementById("rx-file");
+    const extractBtn = document.getElementById("extract-btn");
+    const extractStatus = document.getElementById("extract-status");
+    const medList = document.getElementById("med-list");
+    const overlay = document.getElementById("overlay");
+    const needCounselor = document.getElementById("need-counselor");
+    const chatLog = document.getElementById("chat-log");
+    const chatInput = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("send-btn");
+    const chatStatus = document.getElementById("chat-status");
+
+    function renderMedications(prescription) {
+      const meds = prescription.medications || [];
+      if (!meds.length) {
+        medList.innerHTML = "<p class='status'>No medications extracted.</p>";
+        return;
+      }
+
+      medList.innerHTML = meds.map((med, index) => {
+        const name = med.canonical_name || med.ocr?.drug_name || "unknown";
+        const facts = med.database_facts || {};
+        const tips = [
+          facts.how_to_use && `<p><strong>How to use:</strong> ${facts.how_to_use.slice(0, 220)}</p>`,
+          facts.food_instruction && `<p><strong>Food:</strong> ${facts.food_instruction}</p>`,
+          facts.quick_tips && `<p><strong>Tips:</strong> ${facts.quick_tips.slice(0, 220)}</p>`,
+        ].filter(Boolean).join("");
+
+        return `
+          <article class="med">
+            <h3>${index + 1}. ${name}</h3>
+            <p>OCR: ${med.ocr?.drug_name || ""} ${med.ocr?.dosage || ""} ${med.ocr?.frequency || ""}</p>
+            <p>Match: ${med.match_status} (${Number(med.match_score || 0).toFixed(2)})</p>
+            ${tips}
+          </article>
+        `;
+      }).join("");
+    }
+
+    function appendChat(role, text) {
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.innerHTML = `<strong>${role === "user" ? "You" : "Counselor"}:</strong> ${text}`;
+      chatLog.appendChild(div);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    extractBtn.addEventListener("click", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) {
+        extractStatus.textContent = "Choose an image first.";
+        return;
+      }
+
+      extractBtn.disabled = true;
+      extractStatus.textContent = "Running OCR + NER + database lookup...";
+
+      const form = new FormData();
+      form.append("file", file);
+      form.append("need_counselor", "false");
+      form.append("ner_backend", "auto");
+
+      try {
+        const res = await fetch("/process-file", { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Extract failed");
+
+        currentPrescription = data.prescriptions?.[0] || null;
+        renderMedications(currentPrescription);
+        extractStatus.textContent = `Done. Found ${currentPrescription?.medications?.length || 0} medication(s).`;
+
+        const overlayPath = currentPrescription?.overlay_path || "";
+        if (overlayPath) {
+          const filename = overlayPath.split("/").pop();
+          overlay.src = `/overlays/${filename}`;
+          overlay.style.display = "block";
+        } else {
+          overlay.style.display = "none";
+        }
+      } catch (err) {
+        extractStatus.textContent = `Error: ${err.message}`;
+      } finally {
+        extractBtn.disabled = false;
+      }
+    });
+
+    async function sendChat() {
+      const question = chatInput.value.trim();
+      if (!question) return;
+      if (!currentPrescription) {
+        chatStatus.textContent = "Extract medications first.";
+        return;
+      }
+
+      appendChat("user", question);
+      chatInput.value = "";
+      sendBtn.disabled = true;
+      chatStatus.textContent = needCounselor.checked
+        ? "Counselor thinking (may take a minute on CPU)..."
+        : "Counselor off.";
+
+      try {
+        const res = await fetch("/counsel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prescription: currentPrescription,
+            patient_query: question,
+            need_counselor: needCounselor.checked,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Chat failed");
+        appendChat("bot", data.patient_response || "No response.");
+        chatStatus.textContent = "";
+      } catch (err) {
+        chatStatus.textContent = `Error: ${err.message}`;
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    sendBtn.addEventListener("click", sendChat);
+    chatInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendChat();
+      }
+    });
+  </script>
+</body>
+</html>

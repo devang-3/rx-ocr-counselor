@@ -1,0 +1,16 @@
+services:
+  prescription-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: prescription-pipeline:latest
+    container_name: prescription-pipeline-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./:/app
+      - ./output:/app/output
+      - ./pipeline_models:/app/pipeline_models
+    command: uvicorn deployment.api_server:app --host 0.0.0.0 --port 8000 --reload

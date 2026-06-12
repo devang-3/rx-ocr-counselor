@@ -1,0 +1,14 @@
+dspy-ai>=3.2.0
+transformers>=4.48.0
+torch
+accelerate
+huggingface_hub>=0.30.0,<1.0
+python-doctr[torch]
+Pillow
+numpy>=1.26.4,<2.4
+scikit-learn>=1.5.2
+pandas>=2.0,<3.0
+openpyxl
+fastapi
+uvicorn[standard]
+python-multipart
